@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  nalog-master:
+    restart: unless-stopped
+    image: nalog:latest
+    environment:
+      - NALOG_URL=https://service.nalog.ru/
+    container_name: nalog-master
+    ports:
+      - '8285:8282'

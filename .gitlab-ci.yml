@@ -1,0 +1,37 @@
+stages:
+  - deploy
+
+deploy:review:
+  stage: deploy
+  tags:
+    - docker
+  image: registry.greendatasoft.ru/ubuntu:18.04-custom
+  before_script:
+    - eval $(ssh-agent -s)
+    - ssh-add <(echo "$ALAKAZAM_INFOBOT_SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - echo "$ALAKAZAM_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+    ## prepare
+    - sed -i "s/%CI_PROJECT_NAME/$CI_PROJECT_NAME/g" docker-compose.yml
+    - sed -i "s/%CI_COMMIT_REF_NAME/$CI_COMMIT_REF_NAME/g" docker-compose.yml
+  script:
+    - echo "Deploy..."
+    ## prepare folders
+    - ssh infobot@192.168.0.104 "mkdir -p ~/apps/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/logs"
+    ## copy configuration
+    - scp -rp * infobot@192.168.0.104:~/apps/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/
+    ## go to app dir
+    - ssh infobot@192.168.0.104 "cd ~/apps/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}"
+    ## log into Docker registry
+    - ssh infobot@192.168.0.104 "docker login -u $REGISTRY_USER -p $REGISTRY_PWD $REGISTRY"
+    ## build image.
+    - ssh infobot@192.168.0.104 "cd ~/apps/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME} && docker build -t nalog ."
+    - ssh infobot@192.168.0.104 "cd ~/apps/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME} && docker tag nalog:latest $REGISTRY/nalog:latest"
+    - ssh infobot@192.168.0.104 "docker push $REGISTRY/nalog:latest"
+    ## pull image.
+    - ssh infobot@192.168.0.104 "docker pull $REGISTRY/nalog:latest"
+    ## start new container
+    - ssh infobot@192.168.0.104 "cd ~/apps/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME} && chmod +x boot.sh && docker-compose stop nalog-${CI_COMMIT_REF_NAME} && docker-compose up -d"
+  only:
+    - branches
+  except: [ ]
